@@ -1,16 +1,16 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("VolumeSlapper")]
-[assembly: AssemblyDescription("Simple Windows Volume Set/Get Utility")]
+[assembly: AssemblyTitle("!NSIS Version Getter")]
+[assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("BASeCamp Corporation")]
-[assembly: AssemblyProduct("VolumeSlapper")]
-[assembly: AssemblyCopyright("Copyright ©  2015 BASeCamp")]
+[assembly: AssemblyCompany("Mainframe Associates")]
+[assembly: AssemblyProduct("!NSIS Version Getter")]
+[assembly: AssemblyCopyright("Copyright©2015 Mainframe Associates")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
@@ -20,7 +20,7 @@ using System.Runtime.InteropServices;
 [assembly: ComVisible(false)]
 
 // The following GUID is for the ID of the typelib if this project is exposed to COM
-[assembly: Guid("527092e8-5000-406d-8bff-662e371b3d1c")]
+[assembly: Guid("13c8c228-f33b-4a0d-b405-edd73084d17e")]
 
 // Version information for an assembly consists of the following four values:
 //
@@ -32,5 +32,5 @@ using System.Runtime.InteropServices;
 // You can specify all the values or you can default the Build and Revision Numbers 
 // by using the '*' as shown below:
 // [assembly: AssemblyVersion("1.0.*")]
-[assembly: AssemblyVersion("1.0.0.*")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("8.1.0.*")]
+[assembly: AssemblyFileVersion("8.1.0.0")]
