@@ -22,15 +22,23 @@ VolumeSlapper Command-Line Volume Utility. v" + Assembly.GetEntryAssembly().GetN
  Syntax:
  VolumeSlapper (operation) [arguments]
  
- operation: one of get, set, or status. set accepts an argument for the volume level.
+ operation: one of get, set, or status. set accepts an argument for the volume level, as well as an argument for the session.
 
  volumelevel: a value parsable as a floating point value between 0 and 1 to use as the volume level. used only for the set operation.
 
  examples:
-   Retrieve current audio level:
+   Retrieve current master volume:
    {0} get
-   set current audio level to 50%:
+   set current master volume to 50%:
    {0} set 0.5
+   set Skype to 70% volume:
+   {0} set Skype 0.7
+   retrieve volume of Firefox
+   {0} get Firefox
+   View status of all volume levels
+   {0} status
+   
+
 ";
         static void Main(string[] args)
         {
@@ -45,15 +53,48 @@ VolumeSlapper Command-Line Volume Utility. v" + Assembly.GetEntryAssembly().GetN
             {
                 if(String.Compare(args[0],"get",StringComparison.OrdinalIgnoreCase)==0)
                 {
+                    String VolumeNode = "Master";
+                    if(args.Length > 1)
+                    {
+                        //includes the volume node (program name to get the volume of)
+                        VolumeNode = args[1];
+                    }
                     //get logic
-                    float currvolume = VolumeUtilities.GetMasterVolume();
-                    Console.WriteLine(currvolume);
+                    if (VolumeNode.Equals("Master", StringComparison.OrdinalIgnoreCase))
+                    {
+                        float currvolume = VolumeUtilities.GetMasterVolume();
+                        Console.WriteLine(currvolume);
+                    }
+                    else
+                    {
+                        var grabAppInfo = VolumeUtilities.GetApplicationVolumeInfo(VolumeNode);
+                        if(grabAppInfo ==null)
+                        {
+                            Console.WriteLine("Unable to find Session " + VolumeNode);
+                        }
+                        else
+                        {
+                            Console.WriteLine("Current Volume of " + VolumeNode + " is " + grabAppInfo.Volume);
+                        }
+                    }
                 }
                 else if(String.Compare(args[0],"set",StringComparison.OrdinalIgnoreCase)==0)
                 {
                     //set logic.
                     float assignvolume;
-                    if(!float.TryParse(args[1],out assignvolume))
+                    String sVolume = "";
+                    String VolumeNode = "Master";
+                    if(args.Length > 1)
+                    {
+                        VolumeNode = args[1];
+                        sVolume = args[2];
+                    }
+                    else
+                    {
+                        VolumeNode = "Master";
+                        sVolume = args[1];
+                    }
+                    if(!float.TryParse(sVolume,out assignvolume))
                     {
                         Console.WriteLine("Specified volume level not valid:" + args[1]);
                         Console.WriteLine();
@@ -62,19 +103,38 @@ VolumeSlapper Command-Line Volume Utility. v" + Assembly.GetEntryAssembly().GetN
                     }
                     else
                     {
-                        VolumeUtilities.SetMasterVolume(assignvolume);
-                        Console.WriteLine("Volume Level set to " + assignvolume);
+                        if (VolumeNode.Equals("Master", StringComparison.OrdinalIgnoreCase))
+                        {
+                            VolumeUtilities.SetMasterVolume(assignvolume);
+                            Console.WriteLine("Volume Level set to " + assignvolume);
+                        }
+                        else
+                        {
+                            var grabinfo  = VolumeUtilities.GetApplicationVolumeInfo(VolumeNode);
+                            if (grabinfo != null)
+                            {
+                                grabinfo.Volume = assignvolume;
+                                Console.WriteLine("Volume for " + VolumeNode + " Set to " + assignvolume);
+                            }
+                            else
+                            {
+                                Console.WriteLine("Unable to find " + VolumeNode);
+                            }
+                            
+                        }
                     }
                 }
                 else if(String.Compare(args[0],"status",StringComparison.OrdinalIgnoreCase)==0)
                 {
-                    Console.WriteLine("Application\t\tVolume");
+                    Console.WriteLine(" Master Volume is " + VolumeUtilities.GetMasterVolume());
                     foreach (var iterateApp in VolumeUtilities.EnumerateApplications())
                     {
                         var result = iterateApp.Volume;
                         if(result!=null)
                         {
-                            Console.WriteLine(iterateApp.Name + "\t\t" + result);
+                            Console.WriteLine("Session:" + iterateApp.Name);
+                            Console.WriteLine("Volume:" + result);
+                            Console.WriteLine();
                         }
                     }
                 }
@@ -107,7 +167,6 @@ VolumeSlapper Command-Line Volume Utility. v" + Assembly.GetEntryAssembly().GetN
             IMMDeviceEnumerator deviceEnumerator = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
             IMMDevice speakers;
             deviceEnumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eMultimedia, out speakers);
-
             // activate the session manager. we need the enumerator
             Guid IID_IAudioSessionManager2 = typeof(IAudioSessionManager2).GUID;
             object o;
@@ -128,12 +187,12 @@ VolumeSlapper Command-Line Volume Utility. v" + Assembly.GetEntryAssembly().GetN
                 String GetName = "";
                 float GetVolume = 0;
                 String GetIconPath = "";
-                
-                string dn;
+                IAudioSessionControl getsession = null;
+                getsession = ctl;
                 if (ctl is IAudioSessionControl2)
                 {
                     IAudioSessionControl2 ctl2 = ((IAudioSessionControl2)ctl);
-
+                    
                     ctl2.GetProcessId(out GetProcessID);
                     ctl2.GetDisplayName(out GetName);
                     
@@ -142,7 +201,7 @@ VolumeSlapper Command-Line Volume Utility. v" + Assembly.GetEntryAssembly().GetN
                     ISimpleAudioVolume volcast = (ctl2 as ISimpleAudioVolume);
                     float grabvolume;
                     volcast.GetMasterVolume(out grabvolume);
-                    
+                    GetVolume = grabvolume;
                     Process grabProcess = Process.GetProcessById((int)GetProcessID);
                     if(String.IsNullOrEmpty(GetName))
                     {
@@ -150,7 +209,7 @@ VolumeSlapper Command-Line Volume Utility. v" + Assembly.GetEntryAssembly().GetN
                     }
                     
                 }
-                ApplicationVolumeInformation avi = new ApplicationVolumeInformation(GetProcessID,GetVolume,GetName,GetIconPath);
+                ApplicationVolumeInformation avi = new ApplicationVolumeInformation(getsession,GetProcessID,GetVolume,GetName,GetIconPath);
                 
                 yield return avi;
                 Marshal.ReleaseComObject(ctl);
@@ -225,10 +284,21 @@ VolumeSlapper Command-Line Volume Utility. v" + Assembly.GetEntryAssembly().GetN
             volume.GetMute(out mute);
             return mute;
         }
-
+        public static ApplicationVolumeInformation GetApplicationVolumeInfo(String sName)
+        {
+            foreach(var iterateNode in EnumerateApplications())
+            {
+                if(iterateNode.Name.Equals(sName,StringComparison.OrdinalIgnoreCase))
+                {
+                    return iterateNode;
+                }
+            }
+            return null;
+        }
         public static void SetApplicationVolume(string name, float level)
         {
             ISimpleAudioVolume volume = GetVolumeObject(name);
+            
             if (volume == null)
                 return;
 
@@ -296,16 +366,36 @@ VolumeSlapper Command-Line Volume Utility. v" + Assembly.GetEntryAssembly().GetN
 
         public class ApplicationVolumeInformation
         {
+            private IAudioSessionControl AudioSession { get; set; }
             public uint ProcessID { get; set; }
-            public float Volume { get; set; }
+            private float _Volume = 0;
 
-            public String  Name { get; set; }
-            
-            public String IconPath { get; set; }
-            public ApplicationVolumeInformation(uint pProcessID,float pVolume,String pName,String pIconPath)
+            public float Volume
             {
+                get
+                {
+                    return _Volume;
+                }
+                set
+                {
+                    _Volume = value;
+                    if(AudioSession !=null)
+                    {
+                        ISimpleAudioVolume vol = AudioSession as ISimpleAudioVolume;
+                        vol?.SetMasterVolume(_Volume, Guid.Empty);
+                    }
+
+                }
+            }
+
+            public String  Name { get; private set; }
+            
+            public String IconPath { get; private set; }
+            public ApplicationVolumeInformation(IAudioSessionControl Session,uint pProcessID,float pVolume,String pName,String pIconPath)
+            {
+                AudioSession = Session;
                 ProcessID = pProcessID;
-                Volume = pVolume;
+                _Volume = pVolume;
                 Name = pName;
                 IconPath = pIconPath;
             }
