@@ -157,7 +157,7 @@ namespace VolumeLib
         public static void SetApplicationVolume(string name, float level)
         {
             ISimpleAudioVolume volume = GetVolumeObject(name);
-
+            if (level < 1) level = level * 100;
             if (volume == null)
                 return;
 

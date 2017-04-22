@@ -77,7 +77,7 @@ VolumeSlapper Command-Line Volume Utility. v" + Assembly.GetEntryAssembly().GetN
                         XElement RootNode = new XElement("Mixer");
                         XDocument VolumeDoc = new XDocument(RootNode);
                         float MasterVolume = VolumeUtilities.GetMasterVolume();
-                        VolumeDoc.Add(new XAttribute("MasterVolume",MasterVolume));
+                        RootNode.Add(new XAttribute("MasterVolume",MasterVolume));
                         var VolumeData = VolumeUtilities.EnumerateApplications().ToList();
                         foreach(var appinfo in VolumeData)
                         {
@@ -86,7 +86,9 @@ VolumeSlapper Command-Line Volume Utility. v" + Assembly.GetEntryAssembly().GetN
 
 
                         }
-
+                        String PathPart = Path.GetDirectoryName(sTargetFile);
+                        if (!Directory.Exists(PathPart))
+                            Directory.CreateDirectory(PathPart);
                         using (FileStream ftarget = new FileStream(sTargetFile, FileMode.CreateNew))
                         {
                             VolumeDoc.Save(ftarget);
@@ -138,34 +140,23 @@ VolumeSlapper Command-Line Volume Utility. v" + Assembly.GetEntryAssembly().GetN
                                 {
                                     sName = Nameattr.Value;
                                 }
-                                else if((Volumeattr = LoadElement.Attribute("Volume"))!=null)
+                                if((Volumeattr = LoadElement.Attribute("Volume"))!=null)
                                 {
                                     float.TryParse(Volumeattr.Value, out useVolume);
                                 }
                                 
-                                if(VolumeInfo.ContainsKey(sName))
+
+                                try
                                 {
-                                    try
-                                    {
-                                        VolumeInfo[sName].Volume = useVolume;
-                                        Console.WriteLine("Set set volume for " + sName + " To " + useVolume);
-                                    }
-                                    catch(Exception exx)
-                                    {
-                                        Console.WriteLine("Failed Attempting to set volume for " + sName + " To " + useVolume);
-                                    }
+                                    VolumeUtilities.SetApplicationVolume(sName,useVolume);
                                 }
-                                else
+                                catch(Exception exx)
                                 {
-                                    Console.WriteLine("Unable to set volume for " + sName + " as the Session could not be found.");
+                                    Console.WriteLine("Failed Attempting to set volume for " + sName + " To " + useVolume);
                                 }
 
                             }
-
-
-
                         }
-
 
                     }
                 }
