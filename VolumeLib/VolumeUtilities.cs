@@ -54,10 +54,17 @@ namespace VolumeLib
                     float grabvolume;
                     volcast.GetMasterVolume(out grabvolume);
                     GetVolume = grabvolume;
-                    Process grabProcess = Process.GetProcessById((int)GetProcessID);
-                    if (String.IsNullOrEmpty(GetName))
+                    try
                     {
-                        GetName = grabProcess.ProcessName;
+                        Process grabProcess = Process.GetProcessById((int)GetProcessID);
+                        if (String.IsNullOrEmpty(GetName))
+                        {
+                            GetName = grabProcess.ProcessName;
+                        }
+                    }
+                    catch(Exception exx)
+                    {
+                        GetName = "Name Not Available";
                     }
 
                 }

@@ -8,8 +8,11 @@ using System.Runtime.Remoting.Channels;
 using System.Security.AccessControl;
 using System.Text;
 using System.Diagnostics;
+using System.Xml.Linq;
 using Vannatech.CoreAudio.Enumerations;
 using Vannatech.CoreAudio.Interfaces;
+using Vannatech.CoreAudio.Structures;
+using VolumeLib;
 
 namespace VolumeSlapper
 {
@@ -51,7 +54,122 @@ VolumeSlapper Command-Line Volume Utility. v" + Assembly.GetEntryAssembly().GetN
             }
             else if(args.Length>0)
             {
-                if(String.Compare(args[0],"get",StringComparison.OrdinalIgnoreCase)==0)
+                String sUseFile = null;
+                if (args.Length > 1)
+                    sUseFile = args[1];
+                else
+                    sUseFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BASeCamp", "VolumeSlapper", "Quick.xml");
+                if (String.Compare(args[0],"save",StringComparison.OrdinalIgnoreCase)==0)
+                {
+                    //saves to a given filename.
+                    String sTargetFile = sUseFile;
+                    Console.WriteLine("Saving session volume data to " + sUseFile);
+                    if (sTargetFile.StartsWith("\"")) sTargetFile = sTargetFile.Substring(1);
+                    if (sTargetFile.EndsWith("\"")) sTargetFile = sTargetFile.Substring(0, sTargetFile.Length - 1);
+                    if(File.Exists(sTargetFile))
+                    {
+                        Console.WriteLine("not overwriting existing file:\"" + sTargetFile + "\"");
+                        return;
+                    }
+                    else
+                    {
+                        //save volume information to the file, if the process exists, index by the executable path. Otherwise, we index by the retrieved name.
+                        XElement RootNode = new XElement("Mixer");
+                        XDocument VolumeDoc = new XDocument(RootNode);
+                        float MasterVolume = VolumeUtilities.GetMasterVolume();
+                        VolumeDoc.Add(new XAttribute("MasterVolume",MasterVolume));
+                        var VolumeData = VolumeUtilities.EnumerateApplications().ToList();
+                        foreach(var appinfo in VolumeData)
+                        {
+                            XElement BuildNode = new XElement("Session",new XAttribute("Name",appinfo.Name),new XAttribute("Volume",appinfo.Volume));
+                            RootNode.Add(BuildNode);
+
+
+                        }
+
+                        using (FileStream ftarget = new FileStream(sTargetFile, FileMode.CreateNew))
+                        {
+                            VolumeDoc.Save(ftarget);
+                        }
+
+                    }
+
+
+                }
+                else if (String.Compare(args[0], "load", StringComparison.OrdinalIgnoreCase) == 0)
+                {
+                    //loads volume settings from the given file name.
+                    String sLoadFile = sUseFile;
+                    Console.WriteLine("Loading session volume data from " + sUseFile);
+                    if (!File.Exists(sLoadFile))
+                    {
+                        Console.WriteLine("File not found:" +sLoadFile);
+                    }
+                    else
+                    {
+
+                        XDocument loadDoc = null;
+                        using (FileStream fs = new FileStream(sLoadFile, FileMode.Open))
+                        {
+                            loadDoc = XDocument.Load(fs);
+                            XElement MixerNode = loadDoc.Root;
+                            float MasterVolume = 0;
+                            var MasterVolumeAttrib = MixerNode.Attribute("MasterVolume");
+                            if(MasterVolumeAttrib!=null)
+                            {
+                                MasterVolume = float.Parse(MasterVolumeAttrib.Value);
+                            }
+                            var ListApps = VolumeUtilities.EnumerateApplications().ToList();
+                            var VolumeInfo = new Dictionary<string, VolumeUtilities.ApplicationVolumeInformation>();
+                            foreach(var VolData in ListApps)
+                            {
+                                if(!VolumeInfo.ContainsKey(VolData.Name))
+                                {
+                                    VolumeInfo.Add(VolData.Name,VolData);
+                                }
+                            }
+                            VolumeUtilities.SetMasterVolume(MasterVolume);
+                            foreach(XElement LoadElement in MixerNode.Elements("Session"))
+                            {
+                                String sName = "";
+                                float useVolume = 0;
+                                XAttribute Nameattr = null, Volumeattr = null;
+                                if((Nameattr = LoadElement.Attribute("Name"))!=null)
+                                {
+                                    sName = Nameattr.Value;
+                                }
+                                else if((Volumeattr = LoadElement.Attribute("Volume"))!=null)
+                                {
+                                    float.TryParse(Volumeattr.Value, out useVolume);
+                                }
+                                
+                                if(VolumeInfo.ContainsKey(sName))
+                                {
+                                    try
+                                    {
+                                        VolumeInfo[sName].Volume = useVolume;
+                                        Console.WriteLine("Set set volume for " + sName + " To " + useVolume);
+                                    }
+                                    catch(Exception exx)
+                                    {
+                                        Console.WriteLine("Failed Attempting to set volume for " + sName + " To " + useVolume);
+                                    }
+                                }
+                                else
+                                {
+                                    Console.WriteLine("Unable to set volume for " + sName + " as the Session could not be found.");
+                                }
+
+                            }
+
+
+
+                        }
+
+
+                    }
+                }
+                else if(String.Compare(args[0],"get",StringComparison.OrdinalIgnoreCase)==0)
                 {
                     String VolumeNode = "Master";
                     if(args.Length > 1)
@@ -91,6 +209,7 @@ VolumeSlapper Command-Line Volume Utility. v" + Assembly.GetEntryAssembly().GetN
                     }
                     else
                     {
+                        
                         VolumeNode = "Master";
                         sVolume = args[1];
                     }
@@ -132,7 +251,9 @@ VolumeSlapper Command-Line Volume Utility. v" + Assembly.GetEntryAssembly().GetN
                         var result = iterateApp.Volume;
                         if(result!=null)
                         {
+                            
                             Console.WriteLine("Session:" + iterateApp.Name);
+                            Console.WriteLine("ProcessID:" + iterateApp.ProcessID);
                             Console.WriteLine("Volume:" + result);
                             Console.WriteLine();
                         }
@@ -158,247 +279,5 @@ VolumeSlapper Command-Line Volume Utility. v" + Assembly.GetEntryAssembly().GetN
             Console.Write(sHelpText);
         }
     }
-    public static class VolumeUtilities
-    {
-        
-        public static IEnumerable<ApplicationVolumeInformation> EnumerateApplications()
-        {
-            // get the speakers (1st render + multimedia) device
-            IMMDeviceEnumerator deviceEnumerator = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
-            IMMDevice speakers;
-            deviceEnumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eMultimedia, out speakers);
-            // activate the session manager. we need the enumerator
-            Guid IID_IAudioSessionManager2 = typeof(IAudioSessionManager2).GUID;
-            object o;
-            speakers.Activate(IID_IAudioSessionManager2, 0, IntPtr.Zero, out o);
-            IAudioSessionManager2 mgr = (IAudioSessionManager2)o;
 
-            // enumerate sessions for on this device
-            IAudioSessionEnumerator sessionEnumerator;
-            mgr.GetSessionEnumerator(out sessionEnumerator);
-            int count;
-            sessionEnumerator.GetCount(out count);
-
-            for (int i = 0; i < count; i++)
-            {
-                IAudioSessionControl ctl;
-                sessionEnumerator.GetSession(i, out ctl);
-                uint GetProcessID=0;
-                String GetName = "";
-                float GetVolume = 0;
-                String GetIconPath = "";
-                IAudioSessionControl getsession = null;
-                getsession = ctl;
-                if (ctl is IAudioSessionControl2)
-                {
-                    IAudioSessionControl2 ctl2 = ((IAudioSessionControl2)ctl);
-                    
-                    ctl2.GetProcessId(out GetProcessID);
-                    ctl2.GetDisplayName(out GetName);
-                    
-                    String sIconPath;
-                    ctl2.GetIconPath(out sIconPath);
-                    ISimpleAudioVolume volcast = (ctl2 as ISimpleAudioVolume);
-                    float grabvolume;
-                    volcast.GetMasterVolume(out grabvolume);
-                    GetVolume = grabvolume;
-                    Process grabProcess = Process.GetProcessById((int)GetProcessID);
-                    if(String.IsNullOrEmpty(GetName))
-                    {
-                        GetName = grabProcess.ProcessName;
-                    }
-                    
-                }
-                ApplicationVolumeInformation avi = new ApplicationVolumeInformation(getsession,GetProcessID,GetVolume,GetName,GetIconPath);
-                
-                yield return avi;
-                Marshal.ReleaseComObject(ctl);
-            }
-            Marshal.ReleaseComObject(sessionEnumerator);
-            Marshal.ReleaseComObject(mgr);
-            Marshal.ReleaseComObject(speakers);
-            Marshal.ReleaseComObject(deviceEnumerator);
-        }
-        public static float GetMasterVolume()
-        {
-            // retrieve audio device...
-            IMMDeviceEnumerator useenumerator = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
-            IMMDevice speakers;
-            const int eRender = 0;
-            //retrieve the actual endpoint
-            
-            useenumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eMultimedia, out speakers);
-
-            object o;
-            //retrieve the actual interface instance to retrieve the volume information from.
-            speakers.Activate(typeof(IAudioEndpointVolume).GUID, 0, IntPtr.Zero, out o);
-            IAudioEndpointVolume aepv = (IAudioEndpointVolume)o;
-            float result;
-            aepv.GetMasterVolumeLevelScalar(out result);
-            Marshal.ReleaseComObject(aepv);
-            Marshal.ReleaseComObject(speakers);
-            Marshal.ReleaseComObject(useenumerator);
-            return result;
-        }
-        public static float SetMasterVolume(float newValue)
-        {
-            // retrieve audio device...
-            
-            IMMDeviceEnumerator useenumerator = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
-            IMMDevice speakers;
-            const int eRender = 0;
-            const int eMultimedia = 1;
-            //retrieve the actual endpoint
-            useenumerator.GetDefaultAudioEndpoint(eRender, ERole.eMultimedia, out speakers);
-
-            object o;
-            //retrieve the actual interface instance to retrieve the volume information from.
-            speakers.Activate(typeof(IAudioEndpointVolume).GUID, 0, IntPtr.Zero, out o);
-            IAudioEndpointVolume aepv = (IAudioEndpointVolume)o;
-            float result;
-            int hresult = aepv.GetMasterVolumeLevelScalar(out result);
-            aepv.SetMasterVolumeLevelScalar(newValue,new System.Guid());
-            Marshal.ReleaseComObject(aepv);
-            Marshal.ReleaseComObject(speakers);
-            Marshal.ReleaseComObject(useenumerator);
-            return result;
-        }
-        public static float? GetApplicationVolume(string name)
-        {
-            ISimpleAudioVolume volume = GetVolumeObject(name);
-            if (volume == null)
-                return null;
-
-            float level;
-            volume.GetMasterVolume(out level);
-            return level * 100;
-        }
-
-        public static bool? GetApplicationMute(string name)
-        {
-            ISimpleAudioVolume volume = GetVolumeObject(name);
-            if (volume == null)
-                return null;
-            
-            bool mute;
-            volume.GetMute(out mute);
-            return mute;
-        }
-        public static ApplicationVolumeInformation GetApplicationVolumeInfo(String sName)
-        {
-            foreach(var iterateNode in EnumerateApplications())
-            {
-                if(iterateNode.Name.Equals(sName,StringComparison.OrdinalIgnoreCase))
-                {
-                    return iterateNode;
-                }
-            }
-            return null;
-        }
-        public static void SetApplicationVolume(string name, float level)
-        {
-            ISimpleAudioVolume volume = GetVolumeObject(name);
-            
-            if (volume == null)
-                return;
-
-            Guid guid = Guid.Empty;
-            volume.SetMasterVolume(level / 100, guid);
-        }
-
-        public static void SetApplicationMute(string name, bool mute)
-        {
-            ISimpleAudioVolume volume = GetVolumeObject(name);
-            if (volume == null)
-                return;
-
-            Guid guid = Guid.Empty;
-            volume.SetMute(mute, guid);
-        }
-        private static ISimpleAudioVolume GetVolumeObject(string name)
-        {
-            // get the speakers (1st render + multimedia) device
-            IMMDeviceEnumerator deviceEnumerator = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
-            IMMDevice speakers;
-            deviceEnumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eMultimedia, out speakers);
-
-            // activate the session manager. we need the enumerator
-            Guid IID_IAudioSessionManager2 = typeof(IAudioSessionManager2).GUID;
-            object o;
-            speakers.Activate(IID_IAudioSessionManager2, 0, IntPtr.Zero, out o);
-            IAudioSessionManager2 mgr = (IAudioSessionManager2)o;
-
-            // enumerate sessions for on this device
-            IAudioSessionEnumerator sessionEnumerator;
-            mgr.GetSessionEnumerator(out sessionEnumerator);
-            int count;
-            sessionEnumerator.GetCount(out count);
-
-            // search for an audio session with the required name
-            // NOTE: we could also use the process id instead of the app name (with IAudioSessionControl2)
-            ISimpleAudioVolume volumeControl = null;
-            for (int i = 0; i < count; i++)
-            {
-                IAudioSessionControl ctl;
-                sessionEnumerator.GetSession(i, out ctl);
-                string dn;
-                ctl.GetDisplayName(out dn);
-                if (string.Compare(name, dn, StringComparison.OrdinalIgnoreCase) == 0)
-                {
-                    volumeControl = ctl as ISimpleAudioVolume;
-                    break;
-                }
-                Marshal.ReleaseComObject(ctl);
-            }
-            Marshal.ReleaseComObject(sessionEnumerator);
-            Marshal.ReleaseComObject(mgr);
-            Marshal.ReleaseComObject(speakers);
-            Marshal.ReleaseComObject(deviceEnumerator);
-            return volumeControl;
-        }
-
-
-        [ComImport]
-        [Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
-        private class MMDeviceEnumerator
-        {
-        }
-
-        public class ApplicationVolumeInformation
-        {
-            private IAudioSessionControl AudioSession { get; set; }
-            public uint ProcessID { get; set; }
-            private float _Volume = 0;
-
-            public float Volume
-            {
-                get
-                {
-                    return _Volume;
-                }
-                set
-                {
-                    _Volume = value;
-                    if(AudioSession !=null)
-                    {
-                        ISimpleAudioVolume vol = AudioSession as ISimpleAudioVolume;
-                        vol?.SetMasterVolume(_Volume, Guid.Empty);
-                    }
-
-                }
-            }
-
-            public String  Name { get; private set; }
-            
-            public String IconPath { get; private set; }
-            public ApplicationVolumeInformation(IAudioSessionControl Session,uint pProcessID,float pVolume,String pName,String pIconPath)
-            {
-                AudioSession = Session;
-                ProcessID = pProcessID;
-                _Volume = pVolume;
-                Name = pName;
-                IconPath = pIconPath;
-            }
-        }
-    }
 }
